@@ -48,6 +48,7 @@ testem.log
 Thumbs.db
 
 # dotenv
+.env
 .env.local
 .env.development.local
 .env.test.local
@@ -66,3 +67,7 @@ apps/somnia/src/config.json
 
 vite.config.*.timestamp*
 vitest.config.*.timestamp*
+
+.nx/polygraph
+.claude/worktrees
+.claude/settings.local.json

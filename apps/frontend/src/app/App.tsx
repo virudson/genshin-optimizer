@@ -2,13 +2,12 @@ import {
   DBLocalStorage,
   SandboxStorage,
 } from '@genshin-optimizer/common/database'
-import { ScrollTop, useRefSize, useTitle } from '@genshin-optimizer/common/ui'
+import { ScrollTop, useTitle } from '@genshin-optimizer/common/ui'
 import { ArtCharDatabase } from '@genshin-optimizer/gi/db'
 import { DatabaseContext } from '@genshin-optimizer/gi/db-ui'
 import '@genshin-optimizer/gi/i18n' // import to load translations
 import { theme } from '@genshin-optimizer/gi/theme'
 import {
-  GOAdWrapper,
   SillyContext,
   SnowContext,
   useSilly,
@@ -26,11 +25,6 @@ import {
 import { Suspense, lazy, useCallback, useMemo, useState } from 'react'
 import { HashRouter, Route, Routes } from 'react-router-dom'
 import './App.scss'
-import {
-  AdBanner,
-  AdBlockContextWrapper,
-  AdRailSticky,
-} from '@genshin-optimizer/common/ad'
 import ErrorBoundary from './ErrorBoundary'
 import Footer from './Footer'
 import Header from './Header'
@@ -94,9 +88,7 @@ function App() {
             <DatabaseContext.Provider value={dbContextObj}>
               <ErrorBoundary>
                 <HashRouter basename="/">
-                  <AdBlockContextWrapper>
-                    <Content />
-                  </AdBlockContextWrapper>
+                  <Content />
                   <ScrollTop />
                 </HashRouter>
               </ErrorBoundary>
@@ -109,9 +101,6 @@ function App() {
 }
 function Content() {
   useTitle()
-  const theme = useTheme()
-  const { width, ref } = useRefSize(true)
-  const adWidth = width - (theme.breakpoints.values.xl + 10) //account for the "full width" of container
   return (
     <Box
       display="flex"
@@ -123,65 +112,37 @@ function Content() {
       })}
     >
       <Header anchor="back-to-top-anchor" />
-      {/* Top banner ad */}
-      <AdBanner width={width} dataAdSlot="3477080462" Ad={GOAdWrapper} />
-      {/* Main content */}
-      <Box
-        display="flex"
-        ref={ref}
-        justifyContent="center"
-        alignItems="flex-start"
+      <Container
+        maxWidth="xl"
+        sx={{ px: { xs: 0.5, sm: 1 }, flexGrow: 1 }}
       >
-        {/* left Rail ad */}
-        <AdRailSticky
-          adWidth={adWidth}
-          dataAdSlot="2411728037"
-          Ad={GOAdWrapper}
-        />
-        {/* Content */}
-        <Container
-          maxWidth="xl"
-          sx={{ px: { xs: 0.5, sm: 1 }, flexGrow: 1, mx: 0 }}
+        <Suspense
+          fallback={
+            <Skeleton
+              variant="rectangular"
+              sx={{ width: '100%', height: 1000 }}
+            />
+          }
         >
-          <Suspense
-            fallback={
-              <Skeleton
-                variant="rectangular"
-                sx={{ width: '100%', height: 1000 }}
-              />
-            }
-          >
-            <Routes>
-              <Route index element={<PageHome />} />
-              <Route path="/artifacts" element={<PageArtifacts />} />
-              <Route path="/weapons" element={<PageWeapons />} />
-              <Route path="/characters/*" element={<PageCharacters />} />
-              <Route path="/teams/*">
-                <Route index element={<PageTeams />} />
-                <Route path=":teamId/*" element={<PageTeam />} />
-              </Route>
-              <Route path="/archive/*" element={<PageArchive />} />
-              <Route path="/tools" element={<PageTools />} />
-              <Route path="/setting" element={<PageSettings />} />
-              <Route path="/doc/*" element={<PageDocumentation />} />
-              <Route path="/scanner" element={<PageScanner />} />
-            </Routes>
-          </Suspense>
-        </Container>
-        {/* right rail ad */}
-        <AdRailSticky
-          adWidth={adWidth}
-          dataAdSlot="2411728037"
-          Ad={GOAdWrapper}
-          isRightRail
-        />
-      </Box>
-
-      {/* make sure footer is always at bottom */}
+          <Routes>
+            <Route index element={<PageHome />} />
+            <Route path="/artifacts" element={<PageArtifacts />} />
+            <Route path="/weapons" element={<PageWeapons />} />
+            <Route path="/characters/*" element={<PageCharacters />} />
+            <Route path="/teams/*">
+              <Route index element={<PageTeams />} />
+              <Route path=":teamId/*" element={<PageTeam />} />
+            </Route>
+            <Route path="/archive/*" element={<PageArchive />} />
+            <Route path="/tools" element={<PageTools />} />
+            <Route path="/setting" element={<PageSettings />} />
+            <Route path="/doc/*" element={<PageDocumentation />} />
+            <Route path="/scanner" element={<PageScanner />} />
+          </Routes>
+        </Suspense>
+      </Container>
       <Box flexGrow={1} />
       <Snow />
-      {/* Footer Ad */}
-      <AdBanner width={width} dataAdSlot="2396256483" Ad={GOAdWrapper} />
       <Footer />
     </Box>
   )
