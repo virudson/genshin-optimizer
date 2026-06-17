@@ -8,6 +8,7 @@ import { DatabaseContext } from '@genshin-optimizer/gi/db-ui'
 import '@genshin-optimizer/gi/i18n' // import to load translations
 import { theme } from '@genshin-optimizer/gi/theme'
 import {
+  DriveSyncProvider,
   SillyContext,
   SnowContext,
   useSilly,
@@ -20,7 +21,6 @@ import {
   Skeleton,
   StyledEngineProvider,
   ThemeProvider,
-  useTheme,
 } from '@mui/material'
 import type { ComponentType } from 'react'
 import { lazy, Suspense, useCallback, useMemo, useState } from 'react'
@@ -140,12 +140,14 @@ function App() {
         <SillyContext.Provider value={SillyContextObj}>
           <SnowContext.Provider value={SnowContextObj}>
             <DatabaseContext.Provider value={dbContextObj}>
-              <ErrorBoundary>
-                <HashRouter basename="/">
-                  <Content />
-                  <ScrollTop />
-                </HashRouter>
-              </ErrorBoundary>
+              <DriveSyncProvider>
+                <ErrorBoundary>
+                  <HashRouter basename="/">
+                    <Content />
+                    <ScrollTop />
+                  </HashRouter>
+                </ErrorBoundary>
+              </DriveSyncProvider>
             </DatabaseContext.Provider>
           </SnowContext.Provider>
         </SillyContext.Provider>
