@@ -5,6 +5,7 @@ const CLIENT_ID = process.env['GOOGLE_CLIENT_ID'] ?? ''
 // appdata scope = hidden app folder, user can't accidentally delete it
 const SCOPE = 'https://www.googleapis.com/auth/drive.appdata'
 const ACCESS_TOKEN_KEY = 'drive_access_token'
+const DRIVE_EMAIL_KEY = 'drive_email'
 const LAST_SYNC_KEY = 'drive_last_sync'
 // Wall-clock time of the last successful sync, for display. Persisted so the
 // status can render immediately on refresh instead of flashing "not synced".
@@ -92,6 +93,7 @@ export function signOut() {
     accessToken = null
   }
   localStorage.removeItem(ACCESS_TOKEN_KEY)
+  localStorage.removeItem(DRIVE_EMAIL_KEY)
   localStorage.removeItem(LAST_SYNC_KEY)
   localStorage.removeItem(LAST_SYNC_TIME_KEY)
 }
@@ -116,24 +118,46 @@ function recordSync(localLastEdit: number) {
   localStorage.setItem(LAST_SYNC_TIME_KEY, Date.now().toString())
 }
 
-// The signed-in account's email. Uses the Drive `about` endpoint so we don't
-// have to request a separate profile/email OAuth scope. Returns '' if Drive
-// doesn't expose it under the appdata scope.
+// Last known account email, read synchronously so the UI can show it on load
+// without waiting for (or being blanked by) a failing live fetch.
+export function getCachedDriveEmail(): string {
+  return localStorage.getItem(DRIVE_EMAIL_KEY) ?? ''
+}
+
+// The signed-in account's email via the Drive `about` endpoint (no extra
+// profile/email scope needed). Caches on success; on any failure (expired
+// token, blocked silent refresh, etc.) falls back to the cached value so the
+// displayed email never blanks out on revisit.
 export async function getDriveEmail(): Promise<string> {
-  if (!accessToken) return ''
+  if (!accessToken) return getCachedDriveEmail()
   try {
     const res = await driveRequest(
       'https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)'
     )
-    if (!res.ok) return ''
-    const data = await res.json()
-    return data.user?.emailAddress ?? ''
+    if (res.ok) {
+      const data = await res.json()
+      const email = data.user?.emailAddress
+      if (email) {
+        localStorage.setItem(DRIVE_EMAIL_KEY, email)
+        return email
+      }
+    }
   } catch {
-    return ''
+    // fall through to cached
   }
+  return getCachedDriveEmail()
 }
 
 // ─── Drive Requests ──────────────────────────────────────────────────────────
+
+// Concurrent 401s (e.g. the email fetch and initialSync on mount) must not each
+// kick off their own silent token refresh — they'd race and one would fail.
+// Share a single in-flight refresh.
+let refreshing: Promise<void> | null = null
+function silentRefresh(): Promise<void> {
+  if (!refreshing) refreshing = signIn(true).finally(() => (refreshing = null))
+  return refreshing
+}
 
 async function driveRequest(url: string, options: RequestInit = {}): Promise<Response> {
   const res = await fetch(url, {
@@ -141,7 +165,7 @@ async function driveRequest(url: string, options: RequestInit = {}): Promise<Res
     headers: { ...options.headers, Authorization: `Bearer ${accessToken}` },
   })
   if (res.status === 401) {
-    await signIn(true)
+    await silentRefresh()
     return fetch(url, {
       ...options,
       headers: { ...options.headers, Authorization: `Bearer ${accessToken}` },

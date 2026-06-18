@@ -6,6 +6,7 @@ import type { ConflictData } from './driveApi'
 import {
   checkConflict,
   downloadBothBackups,
+  getCachedDriveEmail,
   getDriveEmail,
   getLastSyncTime,
   initialSync,
@@ -56,7 +57,9 @@ export function DriveSyncProvider({ children }: { children: ReactNode }) {
   const [lastSync, setLastSync] = useState<Date | null>(() =>
     isSignedIn() ? getLastSyncTime() : null
   )
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(() =>
+    isSignedIn() ? getCachedDriveEmail() : ''
+  )
   const [initialCheckDone, setInitialCheckDone] = useState(false)
 
   // Fetch the connected account's email for display.
