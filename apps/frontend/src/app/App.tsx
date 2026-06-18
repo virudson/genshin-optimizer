@@ -170,7 +170,7 @@ function Content() {
       <Header anchor="back-to-top-anchor" />
       <Container
         maxWidth="xl"
-        sx={{ px: { xs: 0.5, sm: 1 }, flexGrow: 1 }}
+        sx={{ px: { xs: 0.5, sm: 1 }, pt: { xs: 1, sm: 2 }, flexGrow: 1 }}
       >
         <Suspense
           fallback={
