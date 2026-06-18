@@ -150,12 +150,25 @@ export async function getDriveEmail(): Promise<string> {
 
 // ─── Drive Requests ──────────────────────────────────────────────────────────
 
+// Drop the dead access token (but keep the email/sync caches) so isSignedIn()
+// flips to false and the UI can show "reconnect" instead of a fake-connected state.
+function clearToken() {
+  accessToken = null
+  localStorage.removeItem(ACCESS_TOKEN_KEY)
+}
+
 // Concurrent 401s (e.g. the email fetch and initialSync on mount) must not each
 // kick off their own silent token refresh — they'd race and one would fail.
-// Share a single in-flight refresh.
+// Share a single in-flight refresh; if it can't renew, the token is unusable.
 let refreshing: Promise<void> | null = null
 function silentRefresh(): Promise<void> {
-  if (!refreshing) refreshing = signIn(true).finally(() => (refreshing = null))
+  if (!refreshing)
+    refreshing = signIn(true)
+      .catch((e) => {
+        clearToken()
+        throw e
+      })
+      .finally(() => (refreshing = null))
   return refreshing
 }
 
