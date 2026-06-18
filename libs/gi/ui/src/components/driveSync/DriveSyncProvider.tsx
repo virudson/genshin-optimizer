@@ -6,6 +6,7 @@ import type { ConflictData } from './driveApi'
 import {
   checkConflict,
   downloadBothBackups,
+  getCachedDriveEmail,
   getDriveEmail,
   getLastSyncTime,
   initialSync,
@@ -56,7 +57,9 @@ export function DriveSyncProvider({ children }: { children: ReactNode }) {
   const [lastSync, setLastSync] = useState<Date | null>(() =>
     isSignedIn() ? getLastSyncTime() : null
   )
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(() =>
+    isSignedIn() ? getCachedDriveEmail() : ''
+  )
   const [initialCheckDone, setInitialCheckDone] = useState(false)
 
   // Fetch the connected account's email for display.
@@ -67,7 +70,11 @@ export function DriveSyncProvider({ children }: { children: ReactNode }) {
     }
     let cancelled = false
     getDriveEmail().then((e) => {
-      if (!cancelled) setEmail(e)
+      if (cancelled) return
+      setEmail(e)
+      // If the token expired and couldn't be silently refreshed, it's now
+      // cleared — drop to the signed-out (reconnect) state instead of faking it.
+      setSignedIn(isSignedIn())
     })
     return () => {
       cancelled = true
@@ -103,6 +110,7 @@ export function DriveSyncProvider({ children }: { children: ReactNode }) {
         // network/permission error — leave unsynced, user can retry manually
       } finally {
         setInitialCheckDone(true)
+        setSignedIn(isSignedIn())
       }
     }
 
@@ -138,6 +146,7 @@ export function DriveSyncProvider({ children }: { children: ReactNode }) {
     } catch (e: any) {
       setStatus('error')
       setMessage(e.message)
+      setSignedIn(isSignedIn())
     }
   }
 
@@ -155,6 +164,7 @@ export function DriveSyncProvider({ children }: { children: ReactNode }) {
     } catch (e: any) {
       setStatus('error')
       setMessage(e.message)
+      setSignedIn(isSignedIn())
     }
   }
 
