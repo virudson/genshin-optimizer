@@ -163,7 +163,7 @@ const PRESERVED_KEY = (key: string) =>
 type SlotNum = 1 | 2 | 3 | 4
 
 function getActiveSlot(): SlotNum {
-  return (parseInt(localStorage.getItem('dbIndex') ?? '1') as SlotNum) || 1
+  return new DBLocalStorage(localStorage).getDBIndex()
 }
 
 // Load a slot's storage into a detached SandboxStorage without touching the
@@ -187,9 +187,9 @@ function exportSlot(slotNum: SlotNum): GoodSlot {
   return new ArtCharDatabase(slotNum, loadSlotStorage(slotNum)).exportGOOD()
 }
 
-function slotLastEdit(slotNum: SlotNum): number {
+function slotLastEdit(slotNum: SlotNum, active: SlotNum): number {
   try {
-    if (slotNum === getActiveSlot())
+    if (slotNum === active)
       return JSON.parse(localStorage.getItem('dbMeta') ?? '{}').lastEdit ?? 0
     const obj = JSON.parse(localStorage.getItem(`extraDatabase_${slotNum}`) ?? '{}')
     return obj.dbMeta ? JSON.parse(obj.dbMeta).lastEdit ?? 0 : 0
@@ -202,7 +202,8 @@ function slotLastEdit(slotNum: SlotNum): number {
 // just the active slot) means an edit to an inactive slot still moves the
 // timestamp, so it can't silently diverge from Drive.
 export function getLocalLastEdit(): number {
-  return Math.max(...([1, 2, 3, 4] as const).map(slotLastEdit))
+  const active = getActiveSlot()
+  return Math.max(...([1, 2, 3, 4] as const).map((s) => slotLastEdit(s, active)))
 }
 
 export function getLocalSize(): number {
@@ -244,16 +245,14 @@ async function downloadBackup(driveInfo: DriveFileInfo): Promise<BackupFile> {
 function importSlot(slotNum: SlotNum, good: GoodSlot): SandboxStorage {
   const sandbox = new SandboxStorage()
   const db = new ArtCharDatabase(slotNum, sandbox)
-  if (good) {
-    // keepNotInImport=false so the slot becomes exactly the backup's contents.
-    db.importGOOD(good, false, false)
-    // importGOOD deliberately drops dbMeta.lastEdit, and importing entities
-    // bumps it to Date.now(). Restore the slot's original edit time so the next
-    // sign-in compares timestamps correctly instead of seeing a false conflict.
-    const lastEdit = (good['dbMeta'] as { lastEdit?: number } | undefined)?.lastEdit ?? 0
-    db.dbMeta.set({ lastEdit })
-    db.saveStorage()
-  }
+  // keepNotInImport=false so the slot becomes exactly the backup's contents.
+  db.importGOOD(good, false, false)
+  // importGOOD deliberately drops dbMeta.lastEdit, and importing entities bumps
+  // it to Date.now(). Restore the slot's original edit time so the next sign-in
+  // compares timestamps correctly instead of seeing a false conflict.
+  const lastEdit = (good['dbMeta'] as { lastEdit?: number } | undefined)?.lastEdit ?? 0
+  db.dbMeta.set({ lastEdit })
+  db.saveStorage()
   return sandbox
 }
 

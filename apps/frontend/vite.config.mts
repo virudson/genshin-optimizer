@@ -67,7 +67,16 @@ export default defineConfig(() => ({
   ],
 
   define: {
-    'process.env': process.env,
+    // Only inline public env vars into the client bundle. Inlining all of
+    // process.env would bake secrets (e.g. GOOGLE_CLIENT_SECRET) into the
+    // shipped JS. NX_* is Nx's public-var convention; NODE_ENV and
+    // GOOGLE_CLIENT_ID are the only non-prefixed keys the app reads.
+    'process.env': Object.fromEntries(
+      Object.entries(process.env).filter(
+        ([k]) =>
+          k.startsWith('NX_') || k === 'NODE_ENV' || k === 'GOOGLE_CLIENT_ID'
+      )
+    ),
     __VERSION__: `"${pkg.version}"`,
   },
 
