@@ -6,6 +6,7 @@ import type { ConflictData } from './driveApi'
 import {
   checkConflict,
   downloadBothBackups,
+  ensureFreshToken,
   getCachedDriveEmail,
   getDriveEmail,
   getLastSyncTime,
@@ -28,6 +29,7 @@ export type DriveSyncContextValue = {
   signOut: () => void
   backupNow: () => Promise<void>
   restoreNow: () => Promise<void>
+  ensureFreshSession: () => Promise<void>
 }
 
 const DriveSyncContext = createContext<DriveSyncContextValue | null>(null)
@@ -129,6 +131,20 @@ export function DriveSyncProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Refresh a stale token while the settings page is in view, or drop to
+  // signed-out if it can't be renewed — the card otherwise shows a fake
+  // "signed in" off a dead token (nothing there hits Drive to 401 and recover).
+  async function ensureFreshSession() {
+    if (!isSignedIn()) return
+    try {
+      await ensureFreshToken()
+    } catch {
+      setSignedIn(false)
+      setStatus('error')
+      setMessage('Google Drive session expired — please sign in again')
+    }
+  }
+
   function handleSignOut() {
     signOut()
     setSignedIn(false)
@@ -213,6 +229,7 @@ export function DriveSyncProvider({ children }: { children: ReactNode }) {
     signOut: handleSignOut,
     backupNow: handleBackupNow,
     restoreNow: handleRestoreNow,
+    ensureFreshSession,
   }
 
   return (

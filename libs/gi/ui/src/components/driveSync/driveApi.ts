@@ -5,6 +5,9 @@ const CLIENT_ID = process.env['GOOGLE_CLIENT_ID'] ?? ''
 // appdata scope = hidden app folder, user can't accidentally delete it
 const SCOPE = 'https://www.googleapis.com/auth/drive.appdata'
 const ACCESS_TOKEN_KEY = 'drive_access_token'
+// Estimated token expiry (ms epoch) from `expires_in` — lets us refresh before a
+// request 401s. localStorage only, never in the backup file.
+const TOKEN_EXPIRY_KEY = 'drive_token_expiry'
 const DRIVE_EMAIL_KEY = 'drive_email'
 const LAST_SYNC_KEY = 'drive_last_sync'
 // Wall-clock time of the last successful sync, for display. Persisted so the
@@ -54,6 +57,8 @@ export type ConflictData = {
 }
 
 let accessToken: string | null = localStorage.getItem(ACCESS_TOKEN_KEY)
+let tokenExpiry: number | null =
+  Number(localStorage.getItem(TOKEN_EXPIRY_KEY)) || null
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
@@ -80,26 +85,46 @@ export async function signIn(silent = false): Promise<void> {
         if (response.error) return reject(new Error(response.error))
         accessToken = response.access_token
         localStorage.setItem(ACCESS_TOKEN_KEY, accessToken!)
+        // Stamp absolute expiry from `expires_in` (seconds) for isTokenExpired().
+        const expiresIn = Number(response.expires_in)
+        if (expiresIn > 0) {
+          tokenExpiry = Date.now() + expiresIn * 1000
+          localStorage.setItem(TOKEN_EXPIRY_KEY, tokenExpiry.toString())
+        }
         resolve()
       },
+      // `callback` only fires on success; a blocked silent-refresh popup lands
+      // here. Reject instead of hanging so the caller can drop to signed-out.
+      error_callback: (err: any) =>
+        reject(new Error(err?.type ?? 'Token request failed')),
     })
     client.requestAccessToken()
   })
 }
 
 export function signOut() {
-  if (accessToken) {
+  if (accessToken)
     (window as any).google?.accounts.oauth2.revoke(accessToken)
-    accessToken = null
-  }
-  localStorage.removeItem(ACCESS_TOKEN_KEY)
-  localStorage.removeItem(DRIVE_EMAIL_KEY)
+  // revoke + drop auth session, then the sync markers (kept on a plain expiry).
+  clearToken()
   localStorage.removeItem(LAST_SYNC_KEY)
   localStorage.removeItem(LAST_SYNC_TIME_KEY)
 }
 
 export function isSignedIn() {
   return !!accessToken
+}
+
+// Buffer so we refresh just before expiry; unknown expiry → treat as expired.
+function isTokenExpired(bufferMs = 60_000): boolean {
+  return !tokenExpiry || Date.now() >= tokenExpiry - bufferMs
+}
+
+// Refresh a stale token; throws if it can't renew so the caller can sign out.
+export async function ensureFreshToken(): Promise<void> {
+  if (!accessToken) return
+  if (!isTokenExpired()) return
+  await silentRefresh()
 }
 
 // The displayable time of the last successful sync, or null if never synced.
@@ -150,11 +175,14 @@ export async function getDriveEmail(): Promise<string> {
 
 // ─── Drive Requests ──────────────────────────────────────────────────────────
 
-// Drop the dead access token (but keep the email/sync caches) so isSignedIn()
-// flips to false and the UI can show "reconnect" instead of a fake-connected state.
+// Drop the whole auth session (token, expiry, email) so isSignedIn() flips false
+// and the UI shows reconnect. Sync markers are kept — data state, not auth.
 function clearToken() {
   accessToken = null
+  tokenExpiry = null
   localStorage.removeItem(ACCESS_TOKEN_KEY)
+  localStorage.removeItem(TOKEN_EXPIRY_KEY)
+  localStorage.removeItem(DRIVE_EMAIL_KEY)
 }
 
 // Concurrent 401s (e.g. the email fetch and initialSync on mount) must not each
