@@ -14,6 +14,7 @@ import {
   Typography,
 } from '@mui/material'
 import type { ReactNode } from 'react'
+import { useEffect } from 'react'
 import { useDriveSync } from './DriveSyncProvider'
 
 export function DriveSyncCard() {
@@ -26,8 +27,21 @@ export function DriveSyncCard() {
     signOut,
     backupNow,
     restoreNow,
+    ensureFreshSession,
   } = useDriveSync()
   const loading = status === 'loading'
+
+  // Settings-page only. Check on mount and on tab refocus — a long-open tab whose
+  // token expired never re-mounts.
+  useEffect(() => {
+    void ensureFreshSession()
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void ensureFreshSession()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <CardThemed bgt="light">
