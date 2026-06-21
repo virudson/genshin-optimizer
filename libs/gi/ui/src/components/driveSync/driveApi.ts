@@ -54,11 +54,26 @@ export type ConflictData = {
   driveIsNewer: boolean
   sizeRatioWarning: boolean // true if one side is < 30% the size of the other
   driveTooLarge: boolean // remote exceeds the size cap — can't be restored
+  // The already-downloaded remote backup, so resolving the conflict (restore /
+  // download-both) reuses it instead of re-fetching from Drive. null when the
+  // remote was never downloaded (too large).
+  driveBackup: BackupFile | null
 }
 
 let accessToken: string | null = localStorage.getItem(ACCESS_TOKEN_KEY)
 let tokenExpiry: number | null =
   Number(localStorage.getItem(TOKEN_EXPIRY_KEY)) || null
+
+// accessToken is the single source of truth for auth; subscribers (the provider)
+// re-read isSignedIn() on change instead of each mutating React state by hand.
+let authListeners: Array<() => void> = []
+export function onAuthChange(cb: () => void): () => void {
+  authListeners.push(cb)
+  return () => (authListeners = authListeners.filter((c) => c !== cb))
+}
+function emitAuthChange() {
+  authListeners.forEach((cb) => cb())
+}
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
@@ -91,6 +106,7 @@ export async function signIn(silent = false): Promise<void> {
           tokenExpiry = Date.now() + expiresIn * 1000
           localStorage.setItem(TOKEN_EXPIRY_KEY, tokenExpiry.toString())
         }
+        emitAuthChange()
         resolve()
       },
       // `callback` only fires on success; a blocked silent-refresh popup lands
@@ -183,6 +199,7 @@ function clearToken() {
   localStorage.removeItem(ACCESS_TOKEN_KEY)
   localStorage.removeItem(TOKEN_EXPIRY_KEY)
   localStorage.removeItem(DRIVE_EMAIL_KEY)
+  emitAuthChange()
 }
 
 // Concurrent 401s (e.g. the email fetch and initialSync on mount) must not each
@@ -335,12 +352,7 @@ function applyBackup(backup: BackupFile): void {
     const sandbox = importSlot(s, good)
     if (s === active) {
       // Replace live GO keys (preserving drive/tab bookkeeping & other slots).
-      const toRemove: string[] = []
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i)!
-        if (!PRESERVED_KEY(key)) toRemove.push(key)
-      }
-      toRemove.forEach((k) => localStorage.removeItem(k))
+      new DBLocalStorage(localStorage).removeForKeys((k) => !PRESERVED_KEY(k))
       for (const [key, value] of sandbox.entries) localStorage.setItem(key, value)
     } else {
       localStorage.setItem(
@@ -358,7 +370,8 @@ function applyBackup(backup: BackupFile): void {
 function buildConflictData(
   driveInfo: DriveFileInfo,
   driveUpdateTime: number,
-  localLastEdit: number
+  localLastEdit: number,
+  driveBackup: BackupFile | null
 ): ConflictData {
   const localSize = getLocalSize()
   const sizeRatio = Math.min(localSize, driveInfo.size) / Math.max(localSize, driveInfo.size)
@@ -371,6 +384,7 @@ function buildConflictData(
     driveIsNewer: driveUpdateTime > localLastEdit,
     sizeRatioWarning: sizeRatio < 0.3, // one side is less than 30% of the other
     driveTooLarge: driveInfo.size > MAX_BACKUP_SIZE,
+    driveBackup,
   }
 }
 
@@ -427,7 +441,7 @@ export async function initialSync(): Promise<SyncResult> {
   // Suspiciously large remote → don't download it; let the user decide with a
   // conflict prompt that flags local as the safe choice.
   if (driveInfo.size > MAX_BACKUP_SIZE)
-    return { type: 'conflict', data: buildConflictData(driveInfo, 0, localLastEdit) }
+    return { type: 'conflict', data: buildConflictData(driveInfo, 0, localLastEdit, null) }
 
   const backup = await downloadBackup(driveInfo)
   const driveUpdateTime = backup[UPDATE_TIME_KEY] ?? 0
@@ -445,7 +459,10 @@ export async function initialSync(): Promise<SyncResult> {
   }
 
   // Anything else is a genuine divergence — the user picks a winner.
-  return { type: 'conflict', data: buildConflictData(driveInfo, driveUpdateTime, localLastEdit) }
+  return {
+    type: 'conflict',
+    data: buildConflictData(driveInfo, driveUpdateTime, localLastEdit, backup),
+  }
 }
 
 // Explicit "Restore" action: compare and surface a conflict, or null if in sync.
@@ -456,7 +473,7 @@ export async function checkConflict(): Promise<ConflictData | null> {
   if (!driveInfo) return null
 
   if (driveInfo.size > MAX_BACKUP_SIZE)
-    return buildConflictData(driveInfo, 0, getLocalLastEdit())
+    return buildConflictData(driveInfo, 0, getLocalLastEdit(), null)
 
   const backup = await downloadBackup(driveInfo)
   const driveUpdateTime = backup[UPDATE_TIME_KEY] ?? 0
@@ -465,18 +482,20 @@ export async function checkConflict(): Promise<ConflictData | null> {
   // Exact timestamp match = same data, nothing to resolve.
   if (driveUpdateTime === localLastEdit) return null
 
-  return buildConflictData(driveInfo, driveUpdateTime, localLastEdit)
+  return buildConflictData(driveInfo, driveUpdateTime, localLastEdit, backup)
 }
 
-export async function restoreFromDrive(): Promise<void> {
+// Pass the backup already downloaded for the conflict prompt to skip a re-fetch.
+export async function restoreFromDrive(backup?: BackupFile): Promise<void> {
   if (!accessToken) throw new Error('Not signed in')
 
-  const driveInfo = await findBackupFile()
-  if (!driveInfo) throw new Error('No backup found in Google Drive')
-  if (driveInfo.size > MAX_BACKUP_SIZE)
-    throw new Error('Backup file too large — possibly corrupted')
-
-  const backup = await downloadBackup(driveInfo)
+  if (!backup) {
+    const driveInfo = await findBackupFile()
+    if (!driveInfo) throw new Error('No backup found in Google Drive')
+    if (driveInfo.size > MAX_BACKUP_SIZE)
+      throw new Error('Backup file too large — possibly corrupted')
+    backup = await downloadBackup(driveInfo)
+  }
   applyBackup(backup)
 }
 
@@ -505,12 +524,14 @@ function downloadJson(data: string, name: string): void {
 }
 
 // Save both sides to disk before a destructive conflict resolution, so nothing
-// is ever lost no matter which version the user picks.
-export async function downloadBothBackups(): Promise<void> {
+// is ever lost no matter which version the user picks. Reuses the backup already
+// downloaded for the conflict prompt; only re-fetches when called without one.
+export async function downloadBothBackups(driveBackup?: BackupFile | null): Promise<void> {
   downloadJson(JSON.stringify(buildBackup()), 'go-local-backup')
-  const driveInfo = await findBackupFile()
-  if (driveInfo && driveInfo.size <= MAX_BACKUP_SIZE) {
-    const backup = await downloadBackup(driveInfo)
-    downloadJson(JSON.stringify(backup), 'go-drive-backup')
+  if (!driveBackup) {
+    const driveInfo = await findBackupFile()
+    if (driveInfo && driveInfo.size <= MAX_BACKUP_SIZE)
+      driveBackup = await downloadBackup(driveInfo)
   }
+  if (driveBackup) downloadJson(JSON.stringify(driveBackup), 'go-drive-backup')
 }

@@ -12,6 +12,7 @@ import {
   getLastSyncTime,
   initialSync,
   isSignedIn,
+  onAuthChange,
   restoreFromDrive,
   signIn,
   signOut,
@@ -64,6 +65,10 @@ export function DriveSyncProvider({ children }: { children: ReactNode }) {
   )
   const [initialCheckDone, setInitialCheckDone] = useState(false)
 
+  // driveApi owns auth; mirror its state instead of re-deriving it in every
+  // handler. Any token mint or clear (incl. a failed silent refresh) flips this.
+  useEffect(() => onAuthChange(() => setSignedIn(isSignedIn())), [])
+
   // Fetch the connected account's email for display.
   useEffect(() => {
     if (!signedIn) {
@@ -72,11 +77,7 @@ export function DriveSyncProvider({ children }: { children: ReactNode }) {
     }
     let cancelled = false
     getDriveEmail().then((e) => {
-      if (cancelled) return
-      setEmail(e)
-      // If the token expired and couldn't be silently refreshed, it's now
-      // cleared — drop to the signed-out (reconnect) state instead of faking it.
-      setSignedIn(isSignedIn())
+      if (!cancelled) setEmail(e)
     })
     return () => {
       cancelled = true
@@ -112,23 +113,29 @@ export function DriveSyncProvider({ children }: { children: ReactNode }) {
         // network/permission error — leave unsynced, user can retry manually
       } finally {
         setInitialCheckDone(true)
-        setSignedIn(isSignedIn())
       }
     }
 
     initialCheck()
   }, [signedIn, initialCheckDone])
 
-  async function handleSignIn() {
+  // Shared error handling for the user actions — surface the message in the
+  // snackbar. Auth-state reconciliation is handled by the onAuthChange listener.
+  async function run(fn: () => Promise<void>) {
     try {
-      setStatus('loading')
-      await signIn()
-      setSignedIn(true)
-      setStatus('idle')
+      await fn()
     } catch (e: any) {
       setStatus('error')
       setMessage(e.message)
     }
+  }
+
+  function handleSignIn() {
+    return run(async () => {
+      setStatus('loading')
+      await signIn()
+      setStatus('idle')
+    })
   }
 
   // Refresh a stale token while the settings page is in view, or drop to
@@ -139,7 +146,6 @@ export function DriveSyncProvider({ children }: { children: ReactNode }) {
     try {
       await ensureFreshToken()
     } catch {
-      setSignedIn(false)
       setStatus('error')
       setMessage('Google Drive session expired — please sign in again')
     }
@@ -147,27 +153,22 @@ export function DriveSyncProvider({ children }: { children: ReactNode }) {
 
   function handleSignOut() {
     signOut()
-    setSignedIn(false)
     setInitialCheckDone(false)
     setLastSync(null)
   }
 
-  async function handleBackupNow() {
-    try {
+  function handleBackupNow() {
+    return run(async () => {
       setStatus('loading')
       await uploadToDrive()
       setLastSync(new Date())
       setStatus('success')
       setMessage('Saved to Google Drive')
-    } catch (e: any) {
-      setStatus('error')
-      setMessage(e.message)
-      setSignedIn(isSignedIn())
-    }
+    })
   }
 
-  async function handleRestoreNow() {
-    try {
+  function handleRestoreNow() {
+    return run(async () => {
       setStatus('loading')
       const found = await checkConflict()
       if (found) {
@@ -177,47 +178,33 @@ export function DriveSyncProvider({ children }: { children: ReactNode }) {
         setStatus('success')
         setMessage('Already in sync with Google Drive')
       }
-    } catch (e: any) {
-      setStatus('error')
-      setMessage(e.message)
-      setSignedIn(isSignedIn())
-    }
+    })
   }
 
-  async function handleUseDrive() {
+  function handleUseDrive() {
     if (!conflict) return
-    try {
-      await restoreFromDrive()
+    const { driveBackup } = conflict
+    return run(async () => {
+      await restoreFromDrive(driveBackup ?? undefined)
       setConflict(null)
       setStatus('success')
       setMessage('Restored from Google Drive — reloading...')
       setTimeout(() => window.location.reload(), 1500)
-    } catch (e: any) {
-      setStatus('error')
-      setMessage(e.message)
-    }
+    })
   }
 
-  async function handleUseLocal() {
-    try {
+  function handleUseLocal() {
+    return run(async () => {
       await uploadToDrive()
       setLastSync(new Date())
       setConflict(null)
       setStatus('success')
       setMessage('Local data saved to Google Drive')
-    } catch (e: any) {
-      setStatus('error')
-      setMessage(e.message)
-    }
+    })
   }
 
-  async function handleDownloadBackups() {
-    try {
-      await downloadBothBackups()
-    } catch (e: any) {
-      setStatus('error')
-      setMessage(e.message)
-    }
+  function handleDownloadBackups() {
+    return run(() => downloadBothBackups(conflict?.driveBackup))
   }
 
   const value: DriveSyncContextValue = {
