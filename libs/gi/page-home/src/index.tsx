@@ -1,14 +1,7 @@
-import {
-  AdResponsive,
-  GO_LOOTBAR_LINK,
-  go_lootbar_banner,
-} from '@genshin-optimizer/common/ad'
 import { CardThemed } from '@genshin-optimizer/common/ui'
-import { GOAdWrapper } from '@genshin-optimizer/gi/ui'
 import DescriptionIcon from '@mui/icons-material/Description'
 import {
   Box,
-  CardActionArea,
   CardContent,
   CardHeader,
   Divider,
@@ -46,7 +39,6 @@ export default function PageHome() {
         >
           <QuickLinksCard />
           <ResinCard />
-          <AdResponsive dataAdSlot="6687816711" Ad={GOAdWrapper} />
         </Grid>
         <Grid
           item
@@ -56,7 +48,6 @@ export default function PageHome() {
           sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}
         >
           <IntroCard />
-          <LootbarCard />
           <InventoryCard />
           <VidGuideCard />
           <PatchNotesCard />
@@ -67,7 +58,6 @@ export default function PageHome() {
   return (
     <Box my={1} display="flex" flexDirection="column" gap={1}>
       <IntroCard />
-      <LootbarCard />
       <QuickLinksCard />
       <InventoryCard />
       <ResinCard />
@@ -99,26 +89,6 @@ function IntroCard() {
           </Trans>
         </Typography>
       </CardContent>
-    </CardThemed>
-  )
-}
-function LootbarCard() {
-  return (
-    <CardThemed>
-      <CardActionArea
-        LinkComponent={Link}
-        href={GO_LOOTBAR_LINK}
-        target="_blank"
-        sx={{ margin: 'auto' }}
-        aria-label="Visit Lootbar.gg for Genshin Impact top-ups"
-      >
-        <Box
-          component="img"
-          alt="Lootbar.gg Banner"
-          src={go_lootbar_banner}
-          sx={{ width: '100%', height: 'auto', marginBottom: '-7px' }}
-        />
-      </CardActionArea>
     </CardThemed>
   )
 }

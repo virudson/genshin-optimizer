@@ -48,6 +48,7 @@ testem.log
 Thumbs.db
 
 # dotenv
+.env
 .env.local
 .env.development.local
 .env.test.local
@@ -71,3 +72,5 @@ vitest.config.*.timestamp*
 
 .nx/polygraph
 .nx/self-healing
+.claude/worktrees
+.claude/settings.local.json

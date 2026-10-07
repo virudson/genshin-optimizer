@@ -1,4 +1,3 @@
-import { AdResponsive } from '@genshin-optimizer/common/ad'
 import { useBoolState } from '@genshin-optimizer/common/react-util'
 import type { CharacterKey } from '@genshin-optimizer/gi/consts'
 import type { LoadoutDatum } from '@genshin-optimizer/gi/db'
@@ -10,7 +9,6 @@ import {
   CharacterSingleSelectionModal,
   CharIconSide,
   EnemyExpandCard,
-  GOAdWrapper,
   TeamDelModal,
   TeamInfoAlert,
 } from '@genshin-optimizer/gi/ui'
@@ -235,18 +233,12 @@ function TeamEditor({
           loadoutData={loadoutData}
         />
       </Suspense>
-      <Grid container columns={{ xs: 1, md: 2, lg: 3 }} spacing={2}>
-        <ResonanceDisplay
-          teamId={teamId}
-          team={team}
-          dataContextValue={dataContextValue}
-        />
-        <Grid item xs={1} width="100%">
-          <AdResponsive
-            bgt="light"
-            dataAdSlot="5102492054"
-            maxHeight={400}
-            Ad={GOAdWrapper}
+      <Grid container columns={{ xs: 1, md: 2 }} spacing={2}>
+        <Grid item xs={1}>
+          <ResonanceDisplay
+            teamId={teamId}
+            team={team}
+            dataContextValue={dataContextValue}
           />
         </Grid>
       </Grid>

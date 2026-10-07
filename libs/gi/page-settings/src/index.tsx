@@ -1,6 +1,6 @@
 import { LocalStorageUsageCard } from '@genshin-optimizer/common/react-util'
 import { CardThemed } from '@genshin-optimizer/common/ui'
-import { DatabaseCard } from '@genshin-optimizer/gi/ui'
+import { DatabaseCard, DriveSyncCard } from '@genshin-optimizer/gi/ui'
 import { CardContent, Divider, Grid, Typography } from '@mui/material'
 import ReactGA from 'react-ga4'
 import { Trans, useTranslation } from 'react-i18next'
@@ -30,10 +30,18 @@ export default function PageSettings() {
           </Grid>
         </Grid>
         <Grid container direction="row" spacing={1}>
-          <Grid item sm={12} md={6}>
-            <SillyCard />
+          <Grid item sm={12} lg={6}>
+            <Grid container spacing={1}>
+              <Grid item xs={12}>
+                <SillyCard />
+              </Grid>
+              <Grid item xs={12}>
+                <DriveSyncCard />
+              </Grid>
+            </Grid>
           </Grid>
-          <Grid item sm={12} md={6}>
+
+          <Grid item sm={12} lg={6}>
             <LocalStorageUsageCard />
           </Grid>
         </Grid>
