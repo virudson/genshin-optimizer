@@ -63,11 +63,19 @@ function loadSlotStorage(slotNum: SlotNum): SandboxStorage {
   if (slotNum === getActiveSlot()) {
     sandbox.copyFrom(new DBLocalStorage(localStorage))
   } else {
+    // Try the extraDatabase first, but fall back to the live DB if it's empty/missing
+    // this ensures all slots are captured in backups even if they've never been the active slot
     try {
       const obj = JSON.parse(localStorage.getItem(`extraDatabase_${slotNum}`) ?? '{}')
-      for (const [k, v] of Object.entries(obj)) sandbox.setString(k, v as string)
+      if (Object.keys(obj).length > 0) {
+        for (const [k, v] of Object.entries(obj)) sandbox.setString(k, v as string)
+      } else {
+        // extraDatabase is empty, fall back to live DB
+        sandbox.copyFrom(new DBLocalStorage(localStorage))
+      }
     } catch {
-      // empty/corrupt extra slot — leave the sandbox empty
+      // corrupt extraDatabase — fall back to live DB
+      sandbox.copyFrom(new DBLocalStorage(localStorage))
     }
   }
   return sandbox
